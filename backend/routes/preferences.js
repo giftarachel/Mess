@@ -23,7 +23,7 @@ router.get("/", auth, async (req, res) => {
 router.put("/", auth, async (req, res) => {
   try {
     if (req.user.role !== "student") return res.status(403).json({ message: "Only students can set preferences" });
-    if (!isSelectionOpen()) return res.status(403).json({ message: "Selection window is closed. Open Sat 7PM – Sun 7PM." });
+    if (!isSelectionOpen()) return res.status(403).json({ message: "Selection window is closed. Open Sat 7PM – Sun 11:59PM." });
 
     const { day, meal, choiceIndex, diet } = req.body;
     const weekId = getCurrentWeekId();

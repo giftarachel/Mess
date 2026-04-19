@@ -1102,7 +1102,7 @@ const StudentApp = () => {
       {!selectionOpen && (
         <div style={{background:"rgba(234,88,12,0.08)",borderBottom:"1px solid rgba(234,88,12,0.2)",padding:"10px 20px",display:"flex",alignItems:"center",gap:10}}>
           <AlertCircle size={15} color="#c2410c"/>
-          <p style={{fontSize:13,color:"#c2410c",fontWeight:600}}>Selection window is closed. Opens every Saturday 7:00 PM — Sunday 7:00 PM.</p>
+          <p style={{fontSize:13,color:"#c2410c",fontWeight:600}}>Selection window is closed. Opens every Saturday 7:00 PM — Sunday 11:59 PM.</p>
         </div>
       )}
       {selectionOpen && (

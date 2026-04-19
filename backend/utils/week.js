@@ -31,11 +31,12 @@ function getCurrentWeekId() {
   const now = nowIST();
   const day = now.getUTCDay(); // 0=Sun,6=Sat
   const hour = now.getUTCHours();
+  const min = now.getUTCMinutes();
 
-  // Selection window: Sat (6) after 19:00 OR Sun (0) before 19:00
+  // Selection window: Sat (6) after 19:00 OR Sun (0) before 23:59
   const inSelectionWindow =
     (day === 6 && hour >= 19) ||
-    (day === 0 && hour < 19);
+    (day === 0 && (hour < 23 || (hour === 23 && min <= 59)));
 
   let targetDate = new Date(now);
   if (inSelectionWindow) {
@@ -51,13 +52,15 @@ function getCurrentWeekId() {
 
 /**
  * Is the selection window currently open?
- * Sat 19:00 IST → Sun 19:00 IST
+ * Sat 19:00 IST → Sun 23:59 IST
  */
 function isSelectionOpen() {
   const now = nowIST();
   const day = now.getUTCDay();
   const hour = now.getUTCHours();
-  return (day === 6 && hour >= 19) || (day === 0 && hour < 19);
+  const min = now.getUTCMinutes();
+  // Saturday after 19:00 OR Sunday before 23:59
+  return (day === 6 && hour >= 19) || (day === 0 && (hour < 23 || (hour === 23 && min <= 59)));
 }
 
 /**
