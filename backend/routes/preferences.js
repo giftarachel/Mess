@@ -114,15 +114,27 @@ router.get("/diet-summary", auth, async (req, res) => {
     const studentIds = new Set(students.map(s => s.userId));
 
     const prefs = await Preference.find({ weekId, userId: { $in: [...studentIds] } });
-    const studentDiet = {};
+
+    // Count each student once — use their most common diet across all preferences
+    const studentDietCount = {};
     prefs.forEach(({ userId, diet }) => {
-      if (!studentDiet[userId]) studentDiet[userId] = diet || "veg";
+      if (!studentDietCount[userId]) studentDietCount[userId] = { veg: 0, nonVeg: 0 };
+      const d = diet || "veg";
+      studentDietCount[userId][d] = (studentDietCount[userId][d] || 0) + 1;
     });
 
-    const vegCount = Object.values(studentDiet).filter(d => d === "veg").length;
-    const nonVegCount = Object.values(studentDiet).filter(d => d === "nonVeg").length;
+    let vegCount = 0, nonVegCount = 0;
+    Object.values(studentDietCount).forEach(counts => {
+      if ((counts.nonVeg || 0) > (counts.veg || 0)) nonVegCount++;
+      else vegCount++;
+    });
 
-    res.json({ veg: vegCount, nonVeg: nonVegCount, noChoice: students.length - Object.keys(studentDiet).length, total: students.length });
+    res.json({
+      veg: vegCount,
+      nonVeg: nonVegCount,
+      noChoice: students.length - Object.keys(studentDietCount).length,
+      total: students.length
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

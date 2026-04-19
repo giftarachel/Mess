@@ -28,12 +28,16 @@ router.get("/notifications", auth, async (req, res) => {
 router.get("/", auth, async (req, res) => {
   try {
     const weekId = getCurrentWeekId();
-    const today = new Date().toISOString().split("T")[0];
+    // Use IST date for today
+    const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(Date.now() + IST_OFFSET);
+    const today = istNow.toISOString().split("T")[0];
+
     const students = await User.find({ role: "student" }).select("userId");
     const studentIds = students.map(s => s.userId);
     const totalStudents = studentIds.length;
     const [onLeaveToday, responded] = await Promise.all([
-      Leave.countDocuments({ date: today }),
+      Leave.countDocuments({ date: today, userId: { $in: studentIds } }),
       Preference.distinct("userId", { weekId, userId: { $in: studentIds } }),
     ]);
     const respondedCount = responded.length;
