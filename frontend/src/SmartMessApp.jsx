@@ -633,19 +633,16 @@ const MenuBuilder = ({ dietFilter = "veg" }) => {
         setMenu(freshMenu);
         const d = {};
         Object.entries(freshMenu).forEach(([day, data]) => {
-          if (data.defaults) {
-            d[day] = d[day] || {};
-            MEALS.forEach(meal => {
-              if (data.defaults[meal]) {
-                d[day][meal + "_veg"]    = data.defaults[meal].veg    ?? null;
-                d[day][meal + "_nonVeg"] = data.defaults[meal].nonVeg ?? null;
-              }
-            });
-          }
+          d[day] = d[day] || {};
+          MEALS.forEach(meal => {
+            const defVeg    = data.defaults?.[meal]?.veg;
+            const defNonVeg = data.defaults?.[meal]?.nonVeg;
+            d[day][meal + "_veg"]    = (defVeg    != null) ? Number(defVeg)    : null;
+            d[day][meal + "_nonVeg"] = (defNonVeg != null) ? Number(defNonVeg) : null;
+          });
         });
         setDefaults(d);
       }
-      // If empty, keep existing defaults — don't wipe them
     }).catch(console.error);
   };
 
@@ -821,7 +818,9 @@ const MenuBuilder = ({ dietFilter = "veg" }) => {
 
                               const eKey = `${meal}|${id}|${oi}`;
 
-                              const defKey = meal + "_" + id; const isDef = (defaults[selectedDay]?.[defKey]) === oi;
+                              const defKey = meal + "_" + id;
+                              const storedDef = defaults[selectedDay]?.[defKey];
+                              const isDef = storedDef != null && Number(storedDef) === oi;
 
                               return (
 
@@ -897,7 +896,7 @@ const Analytics = () => {
     api.getAnalytics().then(d=>{if(Object.keys(d).length)setData(d);}).catch(console.error);
     api.getStats().then(s=>setStats(s)).catch(console.error);
     api.getDietSummary().then(s=>setDietSummary(s)).catch(console.error);
-  }, []);
+  }, [selDay, dietTab]);
 
   const dayData = data[selDay]||{};
   const mC=["#9b3fa8","#e05c8a","#f4845f"];
