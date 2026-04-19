@@ -30,11 +30,19 @@ router.put("/", auth, async (req, res) => {
 
     await Preference.findOneAndUpdate(
       { userId: req.user.userId, weekId, day, meal },
-      { choiceIndex, diet: diet || "veg" },
-      { upsert: true, new: true }
+      { $set: { choiceIndex, diet: diet || "veg" } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
     );
     res.json({ success: true, weekId });
   } catch (err) {
+    // Handle duplicate key race condition gracefully
+    if (err.code === 11000) {
+      await Preference.updateOne(
+        { userId: req.user.userId, weekId, day, meal },
+        { $set: { choiceIndex, diet: diet || "veg" } }
+      );
+      return res.json({ success: true, weekId });
+    }
     res.status(500).json({ message: err.message });
   }
 });

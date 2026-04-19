@@ -5,7 +5,14 @@ const cors = require("cors");
 
 const app = express();
 
-app.use(cors({ origin: "*" }));
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    /\.vercel\.app$/,
+    /\.onrender\.com$/
+  ],
+  credentials: true
+}));
 app.use(express.json());
 
 // Routes
@@ -19,8 +26,27 @@ app.get("/api/health", (_, res) => res.json({ status: "ok" }));
 
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => {
+  .then(async () => {
     console.log("Connected to MongoDB Atlas");
+
+    // One-time index fix: drop stale index missing weekId
+    try {
+      const col = mongoose.connection.collection("preferences");
+      const indexes = await col.indexes();
+      const stale = indexes.find(i => i.name === "userId_1_day_1_meal_1");
+      if (stale) {
+        await col.dropIndex("userId_1_day_1_meal_1");
+        console.log("Dropped stale index: userId_1_day_1_meal_1");
+        await col.createIndex(
+          { userId: 1, weekId: 1, day: 1, meal: 1 },
+          { unique: true }
+        );
+        console.log("Created correct index: userId_1_weekId_1_day_1_meal_1");
+      }
+    } catch (e) {
+      console.error("Index fix error:", e.message);
+    }
+
     app.listen(process.env.PORT || 5000, () =>
       console.log(`Server running on port ${process.env.PORT || 5000}`)
     );
