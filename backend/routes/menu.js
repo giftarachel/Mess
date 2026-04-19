@@ -3,15 +3,19 @@ const auth = require("../middleware/auth");
 const Menu = require("../models/Menu");
 const { getCurrentWeekId } = require("../utils/week");
 
-// GET /api/menu — current week's menu (falls back to latest if none for this week)
+// GET /api/menu — current week's menu (falls back to latest per day if none for this week)
 router.get("/", auth, async (req, res) => {
   try {
     const weekId = getCurrentWeekId();
     let menus = await Menu.find({ weekId }).select("-__v -createdAt -updatedAt");
 
-    // Fallback: if no menu for this week, use the most recently created menu
+    // Fallback: if no menu for this week, get the most recent record for each day
     if (menus.length === 0) {
-      menus = await Menu.find().sort({ createdAt: -1 }).limit(7).select("-__v -createdAt -updatedAt");
+      const allDays = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+      const fallbacks = await Promise.all(
+        allDays.map(d => Menu.findOne({ day: d }).sort({ createdAt: -1 }).select("-__v"))
+      );
+      menus = fallbacks.filter(Boolean);
     }
 
     const result = {};

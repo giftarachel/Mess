@@ -1,7 +1,7 @@
 /**
  * Week utility for LumiLuna mess system.
  *
- * Selection window: Saturday 7:00 PM → Sunday 7:00 PM (IST)
+ * Selection window: Saturday 7:00 PM → Sunday 11:59 PM (IST)
  * Menu week: the 7 days starting from the NEXT Monday after the selection window.
  *
  * weekId format: "YYYY-WNN" (ISO week number of the upcoming week)
@@ -13,34 +13,40 @@ function nowIST() {
   return new Date(Date.now() + IST_OFFSET);
 }
 
-/** Returns ISO week number for a given date */
+/** Returns ISO week number for a given date (using UTC fields) */
 function getISOWeek(date) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const dayNum = d.getUTCDay() || 7; // Mon=1 ... Sun=7
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
 /**
- * Returns the weekId for the UPCOMING week's menu.
- * On Sat 7pm–Sun 7pm: returns next week's id.
- * Otherwise: returns current week's id.
+ * Returns the weekId for the week the manager is currently editing.
+ *
+ * Logic:
+ *  - Sat 19:00 IST → Sun 23:59 IST  (selection window): target = next Monday's week
+ *  - Mon–Sat before 19:00            : target = current week (Mon already started)
+ *  - Any other time                  : target = current week
+ *
+ * The key fix: Sunday is always treated as "next week" since the mess week
+ * starts on Monday and Sunday belongs to the upcoming week's planning window.
  */
 function getCurrentWeekId() {
   const now = nowIST();
-  const day = now.getUTCDay(); // 0=Sun,6=Sat
+  const day  = now.getUTCDay();   // 0=Sun, 1=Mon … 6=Sat
   const hour = now.getUTCHours();
-  const min = now.getUTCMinutes();
+  const min  = now.getUTCMinutes();
 
-  // Selection window: Sat (6) after 19:00 OR Sun (0) before 23:59
+  // Selection window: Sat after 19:00  OR  all of Sunday
   const inSelectionWindow =
-    (day === 6 && hour >= 19) ||
-    (day === 0 && (hour < 23 || (hour === 23 && min <= 59)));
+    (day === 6 && (hour > 19 || (hour === 19 && min >= 0))) ||
+    (day === 0); // entire Sunday → next week
 
   let targetDate = new Date(now);
   if (inSelectionWindow) {
-    // Point to next Monday
+    // Advance to next Monday
     const daysToMonday = day === 6 ? 2 : 1;
     targetDate.setUTCDate(targetDate.getUTCDate() + daysToMonday);
   }
@@ -55,22 +61,24 @@ function getCurrentWeekId() {
  * Sat 19:00 IST → Sun 23:59 IST
  */
 function isSelectionOpen() {
-  const now = nowIST();
-  const day = now.getUTCDay();
+  const now  = nowIST();
+  const day  = now.getUTCDay();
   const hour = now.getUTCHours();
-  const min = now.getUTCMinutes();
-  // Saturday after 19:00 OR Sunday before 23:59
-  return (day === 6 && hour >= 19) || (day === 0 && (hour < 23 || (hour === 23 && min <= 59)));
+  const min  = now.getUTCMinutes();
+  return (
+    (day === 6 && (hour > 19 || (hour === 19 && min >= 0))) ||
+    (day === 0 && (hour < 23 || (hour === 23 && min <= 59)))
+  );
 }
 
 /**
  * Is the manager allowed to input the menu?
- * Allow from Thursday onwards (to give time before Saturday).
+ * Allow Thu, Fri, Sat, Sun (gives time before the selection window).
  */
 function isMenuInputAllowed() {
   const now = nowIST();
-  const day = now.getUTCDay(); // 0=Sun,1=Mon,...,4=Thu,5=Fri,6=Sat
-  return day >= 4 || day === 0; // Thu, Fri, Sat, Sun
+  const day = now.getUTCDay();
+  return day >= 4 || day === 0; // Thu=4, Fri=5, Sat=6, Sun=0
 }
 
 module.exports = { getCurrentWeekId, isSelectionOpen, isMenuInputAllowed, nowIST };
