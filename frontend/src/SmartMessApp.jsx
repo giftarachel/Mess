@@ -630,17 +630,21 @@ const MenuBuilder = ({ dietFilter = "veg" }) => {
   const loadDefaults = () => {
     api.getMenu().then(freshMenu => {
       if (Object.keys(freshMenu).length) {
-        setMenuRaw(freshMenu);  // update local state only, no API call
+        // Strip defaults key before storing in menu state
+        const cleanMenu = {};
         const d = {};
         Object.entries(freshMenu).forEach(([day, data]) => {
+          const { defaults: defs, ...meals } = data;
+          cleanMenu[day] = meals;
           d[day] = d[day] || {};
           MEALS.forEach(meal => {
-            const defVeg    = data.defaults?.[meal]?.veg;
-            const defNonVeg = data.defaults?.[meal]?.nonVeg;
+            const defVeg    = defs?.[meal]?.veg;
+            const defNonVeg = defs?.[meal]?.nonVeg;
             d[day][meal + "_veg"]    = (defVeg    != null) ? Number(defVeg)    : null;
             d[day][meal + "_nonVeg"] = (defNonVeg != null) ? Number(defNonVeg) : null;
           });
         });
+        setMenuRaw(prev => ({ ...prev, ...cleanMenu })); // merge, don't wipe missing days
         setDefaults(d);
       }
     }).catch(console.error);
@@ -659,25 +663,16 @@ const MenuBuilder = ({ dietFilter = "veg" }) => {
   };
 
   const updateOptions = (meal, diet, newArr) => {
-
     const current = menu[selectedDay]?.[meal];
-
     let updated;
-
     if (Array.isArray(current)) {
-
-      // migrate flat array to veg/nonVeg structure
-
       updated = { veg: diet === "veg" ? newArr : current, nonVeg: diet === "nonVeg" ? newArr : [] };
-
     } else {
-
       updated = { ...(current || { veg: [], nonVeg: [] }), [diet]: newArr };
-
     }
-
-    setMenu(selectedDay, { ...menu[selectedDay], [meal]: updated });
-
+    // Build clean meals object — strip defaults key before saving
+    const { defaults: _d, ...cleanDay } = menu[selectedDay] || {};
+    setMenu(selectedDay, { ...cleanDay, [meal]: updated });
   };
 
   const addOption = (meal, diet) => updateOptions(meal, diet, [...getOptions(meal, diet), "New Item"]);
