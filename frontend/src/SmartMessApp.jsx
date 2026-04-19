@@ -72,7 +72,7 @@ const AppProvider = ({ children }) => {
     setUser(null); setPreferences({}); setLeaveDates([]); setWeekDiet(null); setActiveTab("dashboard");
   };
   return (
-    <AppContext.Provider value={{user, login, logout, loading, apiError, preferences, setPreference, leaveDates, toggleLeave, menu, setMenu: updateMenu, activeTab, setActiveTab, notifications, weekDiet, chooseDiet, clearDiet, selectionOpen, currentWeekId}}>
+    <AppContext.Provider value={{user, login, logout, loading, apiError, preferences, setPreference, leaveDates, toggleLeave, menu, setMenu: updateMenu, setMenuRaw: setMenu, activeTab, setActiveTab, notifications, weekDiet, chooseDiet, clearDiet, selectionOpen, currentWeekId}}>
       {children}
     </AppContext.Provider>
   );
@@ -617,7 +617,7 @@ const LeaveCalendar = () => {
 };
 
 const MenuBuilder = ({ dietFilter = "veg" }) => {
-  const { menu, setMenu } = useContext(AppContext);
+  const { menu, setMenu, setMenuRaw } = useContext(AppContext);
 
   const [selectedDay, setSelectedDay] = useState("Mon");
 
@@ -630,7 +630,7 @@ const MenuBuilder = ({ dietFilter = "veg" }) => {
   const loadDefaults = () => {
     api.getMenu().then(freshMenu => {
       if (Object.keys(freshMenu).length) {
-        setMenu(freshMenu);
+        setMenuRaw(freshMenu);  // update local state only, no API call
         const d = {};
         Object.entries(freshMenu).forEach(([day, data]) => {
           d[day] = d[day] || {};
