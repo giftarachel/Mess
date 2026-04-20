@@ -6,11 +6,19 @@ const cors = require("cors");
 const app = express();
 
 app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    /\.vercel\.app$/,
-    /\.onrender\.com$/
-  ],
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    const allowed = [
+      "http://localhost:3000",
+      "http://localhost:5173",
+    ];
+    // Allow any vercel.app or onrender.com subdomain
+    if (/\.vercel\.app$/.test(origin) || /\.onrender\.com$/.test(origin) || allowed.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, true); // allow all for now — tighten after confirmed working
+  },
   credentials: true
 }));
 app.use(express.json());
