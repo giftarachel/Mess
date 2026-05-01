@@ -887,6 +887,7 @@ const Analytics = () => {
   const [dietSummary, setDietSummary] = useState({veg:0,nonVeg:0,noChoice:0,total:0});
   const [expanded, setExpanded] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   const fetchAll = () => {
     setRefreshing(true);
@@ -898,10 +899,16 @@ const Analytics = () => {
       setData(d);
       setStats(s);
       setDietSummary(ds);
+      setLastUpdated(new Date());
     }).catch(console.error).finally(() => setRefreshing(false));
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    fetchAll();
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(fetchAll, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const dayData = data[selDay]||{};
   const mC=["#9b3fa8","#e05c8a","#f4845f"];
@@ -920,7 +927,10 @@ const Analytics = () => {
     <motion.div initial={{opacity:0}} animate={{opacity:1}} style={{padding:"20px 16px 100px"}}>
       <p style={{fontSize:12,fontWeight:700,color:"var(--pk)",textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>Analytics</p>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <h2 style={{fontSize:22,fontWeight:900,color:"var(--t1)",letterSpacing:"-0.5px"}}>Preference Breakdown</h2>
+        <div>
+          <h2 style={{fontSize:22,fontWeight:900,color:"var(--t1)",letterSpacing:"-0.5px"}}>Preference Breakdown</h2>
+          {lastUpdated && <p style={{fontSize:11,color:"var(--t3)",marginTop:2}}>Updated {lastUpdated.toLocaleTimeString()}</p>}
+        </div>
         <button onClick={fetchAll} disabled={refreshing}
           style={{background:"var(--s3)",border:"1px solid var(--b2)",borderRadius:50,padding:"7px 16px",fontSize:12,fontWeight:700,color:"var(--pu)",cursor:"pointer",fontFamily:"var(--fn)",display:"flex",alignItems:"center",gap:6}}>
           <motion.span animate={refreshing?{rotate:360}:{rotate:0}} transition={refreshing?{repeat:Infinity,duration:0.7,ease:"linear"}:{}}
@@ -1041,7 +1051,12 @@ const ManagerDashboard = () => {
   const [analyticsData, setAnalyticsData] = useState({});
   const [loading, setLoading] = useState(true);
   const [activeCard, setActiveCard] = useState(null);
-  useEffect(() => { Promise.all([api.getStats(),api.getAnalytics()]).then(([s,a])=>{setStats(s);setAnalyticsData(a);}).catch(console.error).finally(()=>setLoading(false)); }, []);
+  useEffect(() => {
+    const load = () => Promise.all([api.getStats(),api.getAnalytics()]).then(([s,a])=>{setStats(s);setAnalyticsData(a);}).catch(console.error).finally(()=>setLoading(false));
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
+  }, []);
   const IST_OFFSET = 5.5 * 60 * 60 * 1000;
   const todayKey=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(Date.now()+IST_OFFSET).getUTCDay()];
   const todayData=analyticsData[todayKey]||{};
