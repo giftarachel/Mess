@@ -43,9 +43,11 @@ app.get("/api/seed-users", async (req, res) => {
     const bcrypt = require("bcryptjs");
 
     const users = [
-      { userId: "URK25CS1195", name: "Ashwin",  password: "090807",        role: "student" },
-      { userId: "URK25CS1079", name: "Gifta",   password: "041007",        role: "student" },
-      { userId: "MESS_MGR01",  name: "Manager", password: "mess@admin2026", role: "manager" },
+      { userId: "URK25CS1195", name: "Ashwin",     password: "090807",        role: "student" },
+      { userId: "URK25CS1079", name: "Gifta",      password: "041007",        role: "student" },
+      { userId: "URK25CS9065", name: "Email",      password: "170707",        role: "student" },
+      { userId: "URK25CS9030", name: "Prethiksha", password: "xxxxxx",        role: "student" },
+      { userId: "MESS_MGR01",  name: "Manager",    password: "mess@admin2026", role: "manager" },
     ];
 
     // Remove old fake users

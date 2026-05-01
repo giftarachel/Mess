@@ -1,7 +1,9 @@
 ﻿import { useState, useEffect, useContext, createContext } from "react";
 import { api } from "./api";
 import { motion, AnimatePresence } from "framer-motion";
-import { UtensilsCrossed, CalendarDays, LayoutDashboard, LogOut, ChefHat, BarChart3, Clock, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, Star, Users, Eye, EyeOff, ArrowRight, Coffee, Sun, Moon, Edit3, Trash2, GripVertical, Plus, Bell } from "lucide-react";
+import { UtensilsCrossed, CalendarDays, LayoutDashboard, LogOut, ChefHat, BarChart3, Clock, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, Star, Users, Eye, EyeOff, ArrowRight, Coffee, Sun, Moon, Edit3, Trash2, GripVertical, Plus, Bell, FileDown } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const MEALS = ["Breakfast","Lunch","Dinner"];
@@ -903,9 +905,75 @@ const Analytics = () => {
     }).catch(console.error).finally(() => setRefreshing(false));
   };
 
+  const generatePDF = () => {
+    const doc = new jsPDF();
+    const weekId = stats.weekId || "Current Week";
+    const generatedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+
+    // Header
+    doc.setFontSize(18);
+    doc.setTextColor(155, 63, 168);
+    doc.text("LumiLuna — Mess Cooking Report", 14, 18);
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Week: ${weekId}   |   Generated: ${generatedAt}`, 14, 26);
+    doc.text(`Total Students: ${stats.totalStudents}   |   Responded: ${stats.responded}   |   On Leave: ${stats.onLeaveToday}`, 14, 32);
+
+    let yPos = 40;
+
+    DAYS.forEach(day => {
+      const dayData = data[day] || {};
+      if (Object.keys(dayData).length === 0) return;
+
+      // Day header
+      doc.setFontSize(13);
+      doc.setTextColor(224, 92, 138);
+      doc.text(`── ${day} ──`, 14, yPos);
+      yPos += 6;
+
+      MEALS.forEach(meal => {
+        const mealData = dayData[meal];
+        if (!mealData) return;
+
+        const rows = [];
+
+        // Veg items
+        const vegItems = mealData.veg || {};
+        Object.entries(vegItems).forEach(([item, count]) => {
+          rows.push([meal, "Vegetarian", item, count, `${count} portion${count > 1 ? "s" : ""}`]);
+        });
+
+        // Non-veg items
+        const nvItems = mealData.nonVeg || {};
+        Object.entries(nvItems).forEach(([item, count]) => {
+          rows.push([meal, "Non-Vegetarian", item, count, `${count} portion${count > 1 ? "s" : ""}`]);
+        });
+
+        if (rows.length === 0) return;
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [["Meal", "Diet", "Item", "Students", "Quantity"]],
+          body: rows,
+          theme: "striped",
+          headStyles: { fillColor: [155, 63, 168], textColor: 255, fontSize: 9 },
+          bodyStyles: { fontSize: 9 },
+          columnStyles: { 3: { halign: "center" }, 4: { halign: "center" } },
+          margin: { left: 14, right: 14 },
+        });
+
+        yPos = doc.lastAutoTable.finalY + 4;
+      });
+
+      yPos += 4;
+      if (yPos > 260) { doc.addPage(); yPos = 20; }
+    });
+
+    doc.save(`mess-report-${weekId}.pdf`);
+  };
+
   useEffect(() => {
     fetchAll();
-    // Auto-refresh every 30 seconds
     const interval = setInterval(fetchAll, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -931,12 +999,18 @@ const Analytics = () => {
           <h2 style={{fontSize:22,fontWeight:900,color:"var(--t1)",letterSpacing:"-0.5px"}}>Preference Breakdown</h2>
           {lastUpdated && <p style={{fontSize:11,color:"var(--t3)",marginTop:2}}>Updated {lastUpdated.toLocaleTimeString()}</p>}
         </div>
-        <button onClick={fetchAll} disabled={refreshing}
-          style={{background:"var(--s3)",border:"1px solid var(--b2)",borderRadius:50,padding:"7px 16px",fontSize:12,fontWeight:700,color:"var(--pu)",cursor:"pointer",fontFamily:"var(--fn)",display:"flex",alignItems:"center",gap:6}}>
-          <motion.span animate={refreshing?{rotate:360}:{rotate:0}} transition={refreshing?{repeat:Infinity,duration:0.7,ease:"linear"}:{}}
-            style={{display:"inline-block"}}>↻</motion.span>
-          {refreshing?"Refreshing...":"Refresh"}
-        </button>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={fetchAll} disabled={refreshing}
+            style={{background:"var(--s3)",border:"1px solid var(--b2)",borderRadius:50,padding:"7px 16px",fontSize:12,fontWeight:700,color:"var(--pu)",cursor:"pointer",fontFamily:"var(--fn)",display:"flex",alignItems:"center",gap:6}}>
+            <motion.span animate={refreshing?{rotate:360}:{rotate:0}} transition={refreshing?{repeat:Infinity,duration:0.7,ease:"linear"}:{}}
+              style={{display:"inline-block"}}>↻</motion.span>
+            {refreshing?"...":"Refresh"}
+          </button>
+          <button onClick={generatePDF}
+            style={{background:"linear-gradient(135deg,#9b3fa8,#e05c8a)",border:"none",borderRadius:50,padding:"7px 16px",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"var(--fn)",display:"flex",alignItems:"center",gap:6,boxShadow:"0 4px 14px rgba(155,63,168,0.3)"}}>
+            <FileDown size={13}/>PDF
+          </button>
+        </div>
       </div>
 
       {/* Summary stats */}
