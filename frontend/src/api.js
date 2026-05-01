@@ -14,9 +14,21 @@ const handle = async (res) => {
   return data;
 };
 
+const fetchWithRetry = async (url, options = {}, retries = 2) => {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(url, { ...options, signal: AbortSignal.timeout(15000) });
+      return await handle(res);
+    } catch (e) {
+      if (i === retries) throw new Error(e.message === "Failed to fetch" ? "Server is waking up, please try again in a moment." : e.message);
+      await new Promise(r => setTimeout(r, 3000)); // wait 3s before retry
+    }
+  }
+};
+
 export const api = {
   login: (userId, password) =>
-    fetch(`${BASE}/auth/login`, { method: "POST", headers: headers(), body: JSON.stringify({ userId, password }) }).then(handle),
+    fetchWithRetry(`${BASE}/auth/login`, { method: "POST", headers: headers(), body: JSON.stringify({ userId, password }) }),
 
   getMenu: () =>
     fetch(`${BASE}/menu`, { headers: headers() }).then(handle),

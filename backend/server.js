@@ -55,9 +55,17 @@ mongoose
       console.error("Index fix error:", e.message);
     }
 
-    app.listen(process.env.PORT || 5000, () =>
-      console.log(`Server running on port ${process.env.PORT || 5000}`)
-    );
+    app.listen(process.env.PORT || 5000, () => {
+      console.log(`Server running on port ${process.env.PORT || 5000}`);
+      // Keep Render free tier awake — ping every 14 minutes
+      if (process.env.RENDER_EXTERNAL_URL) {
+        setInterval(() => {
+          fetch(`${process.env.RENDER_EXTERNAL_URL}/api/health`)
+            .then(() => console.log("Keep-alive ping sent"))
+            .catch(() => {});
+        }, 14 * 60 * 1000);
+      }
+    });
   })
   .catch(err => {
     console.error("MongoDB connection error:", err.message);
