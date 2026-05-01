@@ -32,6 +32,42 @@ app.use("/api/stats", require("./routes/stats"));
 
 app.get("/api/health", (_, res) => res.json({ status: "ok" }));
 
+// One-time seed endpoint — remove after use
+app.get("/api/seed-users", async (req, res) => {
+  try {
+    const User = require("./models/User");
+    const bcrypt = require("bcryptjs");
+
+    const users = [
+      { userId: "URK25CS1195", name: "Ashwin",  password: "090807",        role: "student" },
+      { userId: "URK25CS1079", name: "Gifta",   password: "041007",        role: "student" },
+      { userId: "MESS_MGR01",  name: "Manager", password: "mess@admin2026", role: "manager" },
+    ];
+
+    // Remove old fake users
+    await User.deleteMany({ userId: { $in: ["CS2021001","CS2021002","CS2021003","MGR001"] } });
+
+    const results = [];
+    for (const u of users) {
+      const exists = await User.findOne({ userId: u.userId });
+      const initials = u.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+      if (exists) {
+        exists.name = u.name;
+        exists.password = u.password; // model pre-save hook will hash it
+        exists.avatar = initials;
+        await exists.save();
+        results.push(`updated: ${u.userId}`);
+      } else {
+        await User.create({ ...u, avatar: initials });
+        results.push(`created: ${u.userId}`);
+      }
+    }
+    res.json({ success: true, results });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 mongoose
   .connect(process.env.MONGO_URI)
   .then(async () => {
