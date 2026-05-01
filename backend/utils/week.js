@@ -58,17 +58,10 @@ function getCurrentWeekId() {
 
 /**
  * Is the selection window currently open?
- * Sat 19:00 IST → Sun 23:59 IST
+ * TEMP: always open for testing
  */
 function isSelectionOpen() {
-  const now  = nowIST();
-  const day  = now.getUTCDay();
-  const hour = now.getUTCHours();
-  const min  = now.getUTCMinutes();
-  return (
-    (day === 6 && (hour > 19 || (hour === 19 && min >= 0))) ||
-    (day === 0 && (hour < 23 || (hour === 23 && min <= 59)))
-  );
+  return true;
 }
 
 /**
