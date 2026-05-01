@@ -62,7 +62,16 @@ router.get("/analytics", auth, async (req, res) => {
     const User = require("../models/User");
     const weekId = getCurrentWeekId();
 
-    const menus = await Menu.find({ weekId });
+    // Build menu map — fallback to latest per day if no menu for this weekId
+    let menus = await Menu.find({ weekId });
+    if (menus.length === 0) {
+      const allDays = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+      const fallbacks = await Promise.all(
+        allDays.map(d => Menu.findOne({ day: d }).sort({ createdAt: -1 }))
+      );
+      menus = fallbacks.filter(Boolean);
+    }
+
     const menuMap = {};
     menus.forEach(m => {
       menuMap[m.day] = { Breakfast: m.Breakfast, Lunch: m.Lunch, Dinner: m.Dinner };
@@ -71,7 +80,14 @@ router.get("/analytics", auth, async (req, res) => {
     const students = await User.find({ role: "student" }).select("userId");
     const studentIds = new Set(students.map(s => s.userId));
 
-    const prefs = await Preference.find({ weekId });
+    // Also fetch preferences from recent weeks as fallback
+    let prefs = await Preference.find({ weekId });
+    if (prefs.length === 0) {
+      // Fallback: get most recent preferences regardless of weekId
+      prefs = await Preference.find({ userId: { $in: [...studentIds] } })
+        .sort({ updatedAt: -1 });
+    }
+
     const userVotes = {};
     const analytics = {};
 
