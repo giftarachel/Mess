@@ -15,21 +15,31 @@ const MENU_DATA = {
 };
 
 const USERS = [
-  { userId: "CS2021001", name: "Aarav Shah", password: "pass1234", role: "student" },
-  { userId: "CS2021002", name: "Priya Mehta", password: "pass1234", role: "student" },
-  { userId: "CS2021003", name: "Rohan Joshi", password: "pass1234", role: "student" },
-  { userId: "MGR001", name: "Manager Kapoor", password: "pass1234", role: "manager" },
-  { userId: "URK25CS1079", name: "Student User", password: "09082007", role: "student" },
+  { userId: "URK25CS1195", name: "Ashwin",  password: "090807", role: "student" },
+  { userId: "URK25CS1079", name: "Gifta",   password: "041007", role: "student" },
+  { userId: "MESS_MGR01",  name: "Manager", password: "mess@admin2026", role: "manager" },
 ];
 
 async function seed() {
   await mongoose.connect(process.env.MONGO_URI);
   console.log("Connected to MongoDB Atlas");
 
-  // Seed users
+  // Remove old fake/test users
+  const oldIds = ["CS2021001", "CS2021002", "CS2021003", "MGR001"];
+  await User.deleteMany({ userId: { $in: oldIds } });
+  console.log("Removed old test users");
+
+  // Seed real users (upsert so re-running is safe)
   for (const u of USERS) {
     const exists = await User.findOne({ userId: u.userId });
-    if (!exists) {
+    if (exists) {
+      // Update password and name in case they changed
+      exists.password = u.password;
+      exists.name = u.name;
+      exists.avatar = u.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+      await exists.save();
+      console.log(`Updated user: ${u.userId}`);
+    } else {
       const initials = u.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
       await User.create({ ...u, avatar: initials });
       console.log(`Created user: ${u.userId}`);

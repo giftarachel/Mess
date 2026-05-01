@@ -177,7 +177,7 @@ const AuthScreen = () => {
               {loading ? <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:0.7,ease:"linear"}} style={{width:16,height:16,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%"}}/> : <><span>Sign In</span><ArrowRight size={15}/></>}
             </button>
           </div>
-          <p style={{textAlign:"center",marginTop:16,fontSize:11,color:"var(--t3)"}}>Student: CS2021001 / pass1234 &nbsp;·&nbsp; Manager: MGR001 / pass1234</p>
+          <p style={{textAlign:"center",marginTop:16,fontSize:11,color:"var(--t3)"}}>Contact your mess manager if you need access</p>
         </div>
       </motion.div>
     </div>
