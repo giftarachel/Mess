@@ -68,4 +68,13 @@ export const api = {
 
   getNotifications: () =>
     fetch(`${BASE}/stats/notifications`, { headers: headers() }).then(handle),
+
+  submitFeedback: (meal, rating, comment) =>
+    fetch(`${BASE}/feedback`, { method: "POST", headers: headers(), body: JSON.stringify({ meal, rating, comment }) }).then(handle),
+
+  getFeedback: () =>
+    fetch(`${BASE}/feedback`, { headers: headers() }).then(handle),
+
+  getFeedbackSummary: () =>
+    fetch(`${BASE}/feedback/summary`, { headers: headers() }).then(handle),
 };

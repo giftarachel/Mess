@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, useContext, createContext } from "react";
 import { api } from "./api";
 import { motion, AnimatePresence } from "framer-motion";
-import { UtensilsCrossed, CalendarDays, LayoutDashboard, LogOut, ChefHat, BarChart3, Clock, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, Star, Users, Eye, EyeOff, ArrowRight, Coffee, Sun, Moon, Edit3, Trash2, GripVertical, Plus, Bell, FileDown } from "lucide-react";
+import { UtensilsCrossed, CalendarDays, LayoutDashboard, LogOut, ChefHat, BarChart3, Clock, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, Star, Users, Eye, EyeOff, ArrowRight, Coffee, Sun, Moon, Edit3, Trash2, GripVertical, Plus, Bell, FileDown, MessageSquare, Send, ThumbsUp } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -1194,9 +1194,161 @@ const ManagerDashboard = () => {
   );
 };
 
+const FeedbackPage = () => {
+  const { user } = useContext(AppContext);
+  const [meal, setMeal] = useState("General");
+  const [rating, setRating] = useState(0);
+  const [hover, setHover] = useState(0);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async () => {
+    if (!rating) { setError("Please select a rating"); return; }
+    setSubmitting(true); setError("");
+    try {
+      await api.submitFeedback(meal, rating, comment);
+      setSubmitted(true);
+      setRating(0); setComment(""); setMeal("General");
+      setTimeout(() => setSubmitted(false), 3000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const meals = ["General","Breakfast","Lunch","Dinner"];
+  const mealColors = { General:"#9b3fa8", Breakfast:"#f9b234", Lunch:"#f4845f", Dinner:"#e05c8a" };
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} style={{padding:"20px 16px 100px"}}>
+      <p style={{fontSize:12,fontWeight:700,color:"var(--pk)",textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>Feedback</p>
+      <h2 style={{fontSize:22,fontWeight:900,color:"var(--t1)",marginBottom:4,letterSpacing:"-0.5px"}}>Share Your Experience</h2>
+      <p style={{color:"var(--t3)",fontSize:13,marginBottom:20}}>Help us improve the mess food quality</p>
+
+      <div className="card-strong" style={{marginBottom:16}}>
+        {/* Meal selector */}
+        <p style={{fontSize:12,fontWeight:700,color:"var(--t2)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.8px"}}>Meal Type</p>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
+          {meals.map(m => (
+            <button key={m} onClick={() => setMeal(m)}
+              style={{padding:"8px 18px",borderRadius:50,border:"none",cursor:"pointer",fontFamily:"var(--fn)",fontWeight:700,fontSize:13,transition:"all 0.2s",
+                background: meal===m ? `linear-gradient(135deg,${mealColors[m]},${mealColors[m]}cc)` : "var(--s3)",
+                color: meal===m ? "#fff" : "var(--t3)",
+                boxShadow: meal===m ? `0 4px 14px ${mealColors[m]}40` : "none"}}>
+              {m}
+            </button>
+          ))}
+        </div>
+
+        {/* Star rating */}
+        <p style={{fontSize:12,fontWeight:700,color:"var(--t2)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.8px"}}>Rating</p>
+        <div style={{display:"flex",gap:8,marginBottom:20}}>
+          {[1,2,3,4,5].map(s => (
+            <button key={s} onClick={() => setRating(s)} onMouseEnter={() => setHover(s)} onMouseLeave={() => setHover(0)}
+              style={{background:"none",border:"none",cursor:"pointer",padding:4,transition:"transform 0.15s",transform:(hover||rating)>=s?"scale(1.2)":"scale(1)"}}>
+              <Star size={32} fill={(hover||rating)>=s?"#f9b234":"none"} color={(hover||rating)>=s?"#f9b234":"var(--t3)"}/>
+            </button>
+          ))}
+          {rating > 0 && <span style={{fontSize:13,color:"var(--t3)",alignSelf:"center",marginLeft:4}}>
+            {["","Poor","Fair","Good","Great","Excellent"][rating]}
+          </span>}
+        </div>
+
+        {/* Comment */}
+        <p style={{fontSize:12,fontWeight:700,color:"var(--t2)",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.8px"}}>Comment (optional)</p>
+        <textarea value={comment} onChange={e => setComment(e.target.value)} placeholder="Tell us what you think..." maxLength={500}
+          style={{width:"100%",minHeight:100,background:"var(--s3)",border:"1.5px solid var(--b2)",borderRadius:12,padding:"12px 14px",color:"var(--t1)",fontFamily:"var(--fn)",fontSize:14,outline:"none",resize:"vertical",boxSizing:"border-box",transition:"border-color 0.15s"}}
+          onFocus={e => e.target.style.borderColor="var(--pk)"} onBlur={e => e.target.style.borderColor="var(--b2)"}/>
+        <p style={{fontSize:11,color:"var(--t3)",textAlign:"right",marginTop:4}}>{comment.length}/500</p>
+
+        {error && <p style={{color:"var(--dn)",fontSize:13,marginBottom:8}}>{error}</p>}
+
+        {submitted && (
+          <motion.div initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}}
+            style={{background:"rgba(22,163,74,0.08)",border:"1px solid rgba(22,163,74,0.2)",borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+            <ThumbsUp size={16} color="#15803d"/>
+            <p style={{fontSize:13,color:"#15803d",fontWeight:600}}>Thanks for your feedback!</p>
+          </motion.div>
+        )}
+
+        <button className="btn-p" onClick={handleSubmit} disabled={submitting}
+          style={{marginTop:8,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          {submitting
+            ? <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:0.7,ease:"linear"}} style={{width:16,height:16,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%"}}/>
+            : <><Send size={14}/><span>Submit Feedback</span></>}
+        </button>
+      </div>
+    </motion.div>
+  );
+};
+
+const FeedbackManager = () => {
+  const [feedbacks, setFeedbacks] = useState([]);
+  const [summary, setSummary] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([api.getFeedback(), api.getFeedbackSummary()])
+      .then(([fb, sm]) => { setFeedbacks(fb); setSummary(sm); })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const mealColor = { General:"#9b3fa8", Breakfast:"#f9b234", Lunch:"#f4845f", Dinner:"#e05c8a" };
+  const renderStars = (r) => "★".repeat(r) + "☆".repeat(5-r);
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} style={{padding:"20px 16px 100px"}}>
+      <p style={{fontSize:12,fontWeight:700,color:"var(--pk)",textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>Feedback</p>
+      <h2 style={{fontSize:22,fontWeight:900,color:"var(--t1)",marginBottom:16,letterSpacing:"-0.5px"}}>Student Feedback</h2>
+
+      {/* Summary */}
+      {summary.length > 0 && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginBottom:20}}>
+          {summary.map(s => (
+            <div key={s._id} style={{background:"var(--s1)",border:`1px solid ${mealColor[s._id]||"var(--b1)"}20`,borderRadius:14,padding:"14px 16px"}}>
+              <p style={{fontSize:11,color:"var(--t3)",fontWeight:600,marginBottom:4,textTransform:"uppercase"}}>{s._id}</p>
+              <p style={{fontSize:22,fontWeight:900,color:mealColor[s._id]||"var(--pu)"}}>{s.avg.toFixed(1)} <span style={{fontSize:14,color:"#f9b234"}}>★</span></p>
+              <p style={{fontSize:11,color:"var(--t3)"}}>{s.count} review{s.count!==1?"s":""}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Feedback list */}
+      {loading ? <p style={{color:"var(--t3)",fontSize:13}}>Loading...</p>
+        : feedbacks.length === 0 ? <p style={{color:"var(--t3)",fontSize:13}}>No feedback yet.</p>
+        : feedbacks.map(fb => (
+          <div key={fb._id} style={{background:"var(--s1)",border:"1px solid var(--b1)",borderRadius:14,padding:"14px 16px",marginBottom:10,boxShadow:"0 2px 8px rgba(155,63,168,0.05)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#9b3fa8,#e05c8a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#fff"}}>
+                  {fb.name?.[0]||"?"}
+                </div>
+                <div>
+                  <p style={{fontSize:13,fontWeight:700,color:"var(--t1)"}}>{fb.name}</p>
+                  <p style={{fontSize:11,color:"var(--t3)"}}>{new Date(fb.createdAt).toLocaleDateString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</p>
+                </div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <span style={{fontSize:11,fontWeight:700,color:mealColor[fb.meal]||"var(--pu)",background:`${mealColor[fb.meal]||"#9b3fa8"}12`,padding:"3px 10px",borderRadius:50}}>{fb.meal}</span>
+                <p style={{fontSize:16,color:"#f9b234",marginTop:4,letterSpacing:1}}>{renderStars(fb.rating)}</p>
+              </div>
+            </div>
+            {fb.comment && <p style={{fontSize:13,color:"var(--t2)",lineHeight:1.5,borderTop:"1px solid var(--b1)",paddingTop:8,marginTop:4}}>{fb.comment}</p>}
+          </div>
+        ))
+      }
+    </motion.div>
+  );
+};
+
 const StudentApp = () => {
   const { activeTab, weekDiet, selectionOpen, currentWeekId } = useContext(AppContext);
-  const tabs = [{id:"dashboard",label:"Home",icon:LayoutDashboard},{id:"meals",label:"Meals",icon:UtensilsCrossed},{id:"calendar",label:"Leave",icon:CalendarDays}];
+  const tabs = [{id:"dashboard",label:"Home",icon:LayoutDashboard},{id:"meals",label:"Meals",icon:UtensilsCrossed},{id:"calendar",label:"Leave",icon:CalendarDays},{id:"feedback",label:"Feedback",icon:MessageSquare}];
   if (!weekDiet) return <DietSelectionScreen />;
   return (
     <div style={{minHeight:"100vh",paddingBottom:90,background:"var(--bg)"}}>
@@ -1219,19 +1371,7 @@ const StudentApp = () => {
           {activeTab==="dashboard"&&<StudentDashboard/>}
           {activeTab==="meals"&&<MealSelection/>}
           {activeTab==="calendar"&&<LeaveCalendar/>}
-        </motion.div>
-      </AnimatePresence>
-      <BottomNav tabs={tabs}/>
-    </div>
-  );
-  return (
-    <div style={{minHeight:"100vh",paddingBottom:90,background:"var(--bg)"}}>
-      <Header/>
-      <AnimatePresence mode="wait">
-        <motion.div key={activeTab} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:0.2}}>
-          {activeTab==="dashboard"&&<StudentDashboard/>}
-          {activeTab==="meals"&&<MealSelection/>}
-          {activeTab==="calendar"&&<LeaveCalendar/>}
+          {activeTab==="feedback"&&<FeedbackPage/>}
         </motion.div>
       </AnimatePresence>
       <BottomNav tabs={tabs}/>
@@ -1246,6 +1386,7 @@ const ManagerApp = () => {
     {id:"veg-menu",  label:"Veg Menu",  icon:ChefHat},
     {id:"nveg-menu", label:"Non-Veg",   icon:UtensilsCrossed},
     {id:"analytics", label:"Analytics", icon:BarChart3},
+    {id:"feedback",  label:"Feedback",  icon:MessageSquare},
   ];
   return (
     <div style={{minHeight:"100vh",paddingBottom:90,background:"var(--bg)"}}>
@@ -1256,6 +1397,7 @@ const ManagerApp = () => {
           {activeTab==="veg-menu"  && <MenuBuilder dietFilter="veg"/>}
           {activeTab==="nveg-menu" && <MenuBuilder dietFilter="nonVeg"/>}
           {activeTab==="analytics" && <Analytics/>}
+          {activeTab==="feedback"  && <FeedbackManager/>}
         </motion.div>
       </AnimatePresence>
       <BottomNav tabs={tabs}/>

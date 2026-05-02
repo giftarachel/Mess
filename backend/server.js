@@ -33,6 +33,7 @@ app.use("/api/preferences", require("./routes/preferences"));
 app.use("/api/leave", require("./routes/leave"));
 app.use("/api/menu", require("./routes/menu"));
 app.use("/api/stats", require("./routes/stats"));
+app.use("/api/feedback", require("./routes/feedback"));
 
 app.get("/api/health", (_, res) => res.json({ status: "ok" }));
 
