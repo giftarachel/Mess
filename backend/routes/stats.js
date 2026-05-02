@@ -13,10 +13,16 @@ router.get("/notifications", auth, async (req, res) => {
     if (req.user.role === "manager") {
       const students = await User.find({ role: "student" }).select("userId");
       const studentIds = students.map(s => s.userId);
-      const responded = await Preference.distinct("userId", { weekId, userId: { $in: studentIds } });
+      let responded = await Preference.distinct("userId", { weekId, userId: { $in: studentIds } });
+      if (responded.length === 0) {
+        responded = await Preference.distinct("userId", { userId: { $in: studentIds } });
+      }
       res.json({ count: Math.max(0, studentIds.length - responded.length) });
     } else {
-      const prefs = await Preference.find({ userId: req.user.userId, weekId });
+      let prefs = await Preference.find({ userId: req.user.userId, weekId });
+      if (prefs.length === 0) {
+        prefs = await Preference.find({ userId: req.user.userId });
+      }
       res.json({ count: Math.max(0, 21 - prefs.length) });
     }
   } catch (err) {
@@ -36,10 +42,15 @@ router.get("/", auth, async (req, res) => {
     const students = await User.find({ role: "student" }).select("userId");
     const studentIds = students.map(s => s.userId);
     const totalStudents = studentIds.length;
-    const [onLeaveToday, responded] = await Promise.all([
-      Leave.countDocuments({ date: today, userId: { $in: studentIds } }),
-      Preference.distinct("userId", { weekId, userId: { $in: studentIds } }),
-    ]);
+
+    // Try current weekId first, fallback to any recent preferences
+    let responded = await Preference.distinct("userId", { weekId, userId: { $in: studentIds } });
+    if (responded.length === 0) {
+      // Fallback: count students who have any preferences at all
+      responded = await Preference.distinct("userId", { userId: { $in: studentIds } });
+    }
+
+    const onLeaveToday = await Leave.countDocuments({ date: today, userId: { $in: studentIds } });
     const respondedCount = responded.length;
     res.json({ totalStudents, onLeaveToday, responded: respondedCount, pending: Math.max(0, totalStudents - respondedCount), weekId });
   } catch (err) {
