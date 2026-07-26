@@ -1,45 +1,49 @@
 const router = require("express").Router();
 const auth = require("../middleware/auth");
-const Feedback = require("../models/Feedback");
+const pool = require("../db");
 
-// POST /api/feedback — student submits feedback
+// POST /api/feedback
 router.post("/", auth, async (req, res) => {
   try {
-    if (req.user.role !== "student") return res.status(403).json({ message: "Only students can submit feedback" });
+    if (req.user.role !== "student")
+      return res.status(403).json({ message: "Only students can submit feedback" });
     const { meal, rating, comment } = req.body;
     if (!meal || !rating) return res.status(400).json({ message: "Meal and rating are required" });
-    const fb = await Feedback.create({
-      userId: req.user.userId,
-      name: req.user.name,
-      meal, rating,
-      comment: comment || "",
-    });
-    res.status(201).json({ success: true, id: fb._id });
+
+    const result = await pool.query(
+      "INSERT INTO feedback (user_id, name, meal, rating, comment) VALUES ($1,$2,$3,$4,$5) RETURNING id",
+      [req.user.userId, req.user.name, meal, rating, comment || ""]
+    );
+    res.status(201).json({ success: true, id: result.rows[0].id });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// GET /api/feedback — manager gets all feedback
+// GET /api/feedback — manager
 router.get("/", auth, async (req, res) => {
   try {
     if (req.user.role !== "manager") return res.status(403).json({ message: "Forbidden" });
-    const feedbacks = await Feedback.find().sort({ createdAt: -1 }).limit(100);
-    res.json(feedbacks);
+    const rows = (await pool.query(
+      "SELECT * FROM feedback ORDER BY created_at DESC LIMIT 100"
+    )).rows;
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// GET /api/feedback/summary — average ratings per meal
+// GET /api/feedback/summary
 router.get("/summary", auth, async (req, res) => {
   try {
     if (req.user.role !== "manager") return res.status(403).json({ message: "Forbidden" });
-    const summary = await Feedback.aggregate([
-      { $group: { _id: "$meal", avg: { $avg: "$rating" }, count: { $sum: 1 } } },
-      { $sort: { _id: 1 } }
-    ]);
-    res.json(summary);
+    const rows = (await pool.query(`
+      SELECT meal AS _id, ROUND(AVG(rating)::numeric, 2) AS avg, COUNT(*) AS count
+      FROM feedback
+      GROUP BY meal
+      ORDER BY meal
+    `)).rows;
+    res.json(rows.map(r => ({ _id: r._id, avg: parseFloat(r.avg), count: parseInt(r.count) })));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

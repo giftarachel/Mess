@@ -1,27 +1,34 @@
 const router = require("express").Router();
 const auth = require("../middleware/auth");
-const Leave = require("../models/Leave");
+const pool = require("../db");
 
-// GET /api/leave  — get current user's leave dates
+// GET /api/leave
 router.get("/", auth, async (req, res) => {
   try {
-    const leaves = await Leave.find({ userId: req.user.userId }).select("date -_id");
-    res.json(leaves.map(l => l.date));
+    const rows = (await pool.query(
+      "SELECT date FROM leave_dates WHERE user_id=$1 ORDER BY date",
+      [req.user.userId]
+    )).rows;
+    res.json(rows.map(r => r.date.toISOString().split("T")[0]));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// POST /api/leave/toggle  — add or remove a leave date
+// POST /api/leave/toggle
 router.post("/toggle", auth, async (req, res) => {
   try {
     const { date } = req.body;
-    const existing = await Leave.findOne({ userId: req.user.userId, date });
+    const existing = (await pool.query(
+      "SELECT id FROM leave_dates WHERE user_id=$1 AND date=$2",
+      [req.user.userId, date]
+    )).rows[0];
+
     if (existing) {
-      await existing.deleteOne();
+      await pool.query("DELETE FROM leave_dates WHERE user_id=$1 AND date=$2", [req.user.userId, date]);
       res.json({ action: "removed", date });
     } else {
-      await Leave.create({ userId: req.user.userId, date });
+      await pool.query("INSERT INTO leave_dates (user_id, date) VALUES ($1,$2)", [req.user.userId, date]);
       res.json({ action: "added", date });
     }
   } catch (err) {
@@ -29,15 +36,17 @@ router.post("/toggle", auth, async (req, res) => {
   }
 });
 
-// GET /api/leave/summary  — manager: count of students on leave per date
+// GET /api/leave/summary — manager
 router.get("/summary", auth, async (req, res) => {
   try {
     if (req.user.role !== "manager") return res.status(403).json({ message: "Forbidden" });
-    const summary = await Leave.aggregate([
-      { $group: { _id: "$date", count: { $sum: 1 } } },
-      { $sort: { _id: 1 } }
-    ]);
-    res.json(summary);
+    const rows = (await pool.query(`
+      SELECT date::text AS _id, COUNT(*) AS count
+      FROM leave_dates
+      GROUP BY date
+      ORDER BY date
+    `)).rows;
+    res.json(rows.map(r => ({ _id: r._id, count: parseInt(r.count) })));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

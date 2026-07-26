@@ -1,12 +1,12 @@
 require("dotenv").config();
 const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
+const cors    = require("cors");
+const pool    = require("./db");
 
 const app = express();
 
 app.use(cors({
-  origin: function(origin, callback) {
+  origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     const allowed = [
       "http://localhost:3000",
@@ -18,56 +18,46 @@ app.use(cors({
       allowed.includes(origin) ||
       /\.vercel\.app$/.test(origin) ||
       /\.onrender\.com$/.test(origin)
-    ) {
-      return callback(null, true);
-    }
-    return callback(null, true); // allow all for now
+    ) return callback(null, true);
+    return callback(null, true);
   },
-  credentials: true
+  credentials: true,
 }));
 app.use(express.json());
 
 // Routes
-app.use("/api/auth", require("./routes/auth"));
-app.use("/api/preferences", require("./routes/preferences"));
-app.use("/api/leave", require("./routes/leave"));
-app.use("/api/menu", require("./routes/menu"));
-app.use("/api/stats", require("./routes/stats"));
-app.use("/api/feedback", require("./routes/feedback"));
+app.use("/api/auth",          require("./routes/auth"));
+app.use("/api/preferences",   require("./routes/preferences"));
+app.use("/api/leave",         require("./routes/leave"));
+app.use("/api/menu",          require("./routes/menu"));
+app.use("/api/stats",         require("./routes/stats"));
+app.use("/api/feedback",      require("./routes/feedback"));
+app.use("/api/notifications", require("./routes/notifications"));
 
 app.get("/api/health", (_, res) => res.json({ status: "ok" }));
 
-// One-time seed endpoint — remove after use
+// Seed endpoint
 app.get("/api/seed-users", async (req, res) => {
+  const bcrypt = require("bcryptjs");
+  const users = [
+    { userId: "ashwin@karunya.edu.in",      name: "Ashwin",     password: "URK25CS1195", role: "student" },
+    { userId: "gifta@karunya.edu.in",       name: "Gifta",      password: "URK25CS1079", role: "student" },
+    { userId: "eamil@karunya.edu.in",       name: "Eamil",      password: "URK25CS9065", role: "student" },
+    { userId: "prethiksha@karunya.edu.in",  name: "Prethiksha", password: "URK25CS9030", role: "student" },
+    { userId: "manager@karunya.edu.in",     name: "Manager",    password: "MESS_MGR01",  role: "manager" },
+  ];
+  const results = [];
   try {
-    const User = require("./models/User");
-    const bcrypt = require("bcryptjs");
-
-    const users = [
-      { userId: "URK25CS1195", name: "Ashwin",     password: "090807",        role: "student" },
-      { userId: "URK25CS1079", name: "Gifta",      password: "041007",        role: "student" },
-      { userId: "URK25CS9065", name: "Eamil",      password: "170707",        role: "student" },
-      { userId: "URK25CS9030", name: "Prethiksha", password: "030518",        role: "student" },
-      { userId: "MESS_MGR01",  name: "Manager",    password: "mess@admin2026", role: "manager" },
-    ];
-
-    // Remove old fake users
-    await User.deleteMany({ userId: { $in: ["CS2021001","CS2021002","CS2021003","MGR001"] } });
-
-    const results = [];
     for (const u of users) {
-      const exists = await User.findOne({ userId: u.userId });
-      const initials = u.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
-      if (exists) {
-        exists.name = u.name;
-        exists.password = u.password; // model pre-save hook will hash it
-        exists.avatar = initials;
-        await exists.save();
-        results.push(`updated: ${u.userId}`);
-      } else {
-        await User.create({ ...u, avatar: initials });
-        results.push(`created: ${u.userId}`);
-      }
+      const hashed = await bcrypt.hash(u.password, 10);
+      const avatar = u.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+      await pool.query(`
+        INSERT INTO users (user_id, name, password, role, avatar)
+        VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (user_id) DO UPDATE SET
+          name=EXCLUDED.name, password=EXCLUDED.password, avatar=EXCLUDED.avatar
+      `, [u.userId, u.name, hashed, u.role, avatar]);
+      results.push(`upserted: ${u.userId}`);
     }
     res.json({ success: true, results });
   } catch (e) {
@@ -75,32 +65,67 @@ app.get("/api/seed-users", async (req, res) => {
   }
 });
 
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(async () => {
-    console.log("Connected to MongoDB Atlas");
+// ─── SCHEDULED NOTIFICATION TRIGGERS ─────────────────────────────────────────
+function scheduleWindowNotifications() {
+  const { isSelectionOpen, getDeadlineInfo } = require("./utils/week");
+  const { pushSystemNotification } = require("./routes/notifications");
 
-    // One-time index fix: drop stale index missing weekId
-    try {
-      const col = mongoose.connection.collection("preferences");
-      const indexes = await col.indexes();
-      const stale = indexes.find(i => i.name === "userId_1_day_1_meal_1");
-      if (stale) {
-        await col.dropIndex("userId_1_day_1_meal_1");
-        console.log("Dropped stale index: userId_1_day_1_meal_1");
-        await col.createIndex(
-          { userId: 1, weekId: 1, day: 1, meal: 1 },
-          { unique: true }
-        );
-        console.log("Created correct index: userId_1_weekId_1_day_1_meal_1");
-      }
-    } catch (e) {
-      console.error("Index fix error:", e.message);
+  let wasOpen = isSelectionOpen();
+
+  // Check every 30 seconds if the selection window state has changed
+  setInterval(async () => {
+    const nowOpen = isSelectionOpen();
+    const { weekId } = getDeadlineInfo();
+
+    if (!wasOpen && nowOpen) {
+      // Window just opened → notify students
+      await pushSystemNotification({
+        type: "window_open",
+        title: "🍳 Selection Window Open!",
+        message: `Breakfast selection for week ${weekId} is now open. Submit your choices before Sunday 11:59 PM.`,
+        targetRole: "student",
+      });
+      await pushSystemNotification({
+        type: "window_open",
+        title: "📋 Selection Window Opened",
+        message: `Students can now select breakfast for week ${weekId}. Monitor responses in Analytics.`,
+        targetRole: "manager",
+      });
+      wasOpen = true;
     }
 
-    app.listen(process.env.PORT || 5000, () => {
-      console.log(`Server running on port ${process.env.PORT || 5000}`);
-      // Keep Render free tier awake — ping every 14 minutes
+    if (wasOpen && !nowOpen) {
+      // Window just closed → notify both
+      await pushSystemNotification({
+        type: "window_close",
+        title: "⏰ Selection Window Closed",
+        message: `Breakfast selection for week ${weekId} is now closed. Your choices have been saved.`,
+        targetRole: "student",
+      });
+      await pushSystemNotification({
+        type: "window_close",
+        title: "📊 Selection Deadline Reached",
+        message: `Selection window for week ${weekId} has closed. Generate the demand report from Analytics.`,
+        targetRole: "manager",
+      });
+      wasOpen = false;
+    }
+  }, 30000);
+}
+
+// Start server
+pool.connect()
+  .then(client => {
+    client.release();
+    console.log("✅ Connected to PostgreSQL (Supabase)");
+    const PORT = process.env.PORT || 5004;
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+
+      // Start window state watcher
+      scheduleWindowNotifications();
+
+      // Keep Render free tier awake
       if (process.env.RENDER_EXTERNAL_URL) {
         setInterval(() => {
           fetch(`${process.env.RENDER_EXTERNAL_URL}/api/health`)
@@ -111,6 +136,6 @@ mongoose
     });
   })
   .catch(err => {
-    console.error("MongoDB connection error:", err.message);
+    console.error("❌ PostgreSQL connection error:", err.message);
     process.exit(1);
   });

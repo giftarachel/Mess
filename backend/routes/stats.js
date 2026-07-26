@@ -1,29 +1,29 @@
 const router = require("express").Router();
 const auth = require("../middleware/auth");
-const User = require("../models/User");
-const Leave = require("../models/Leave");
-const Preference = require("../models/Preference");
-
+const pool = require("../db");
 const { getCurrentWeekId } = require("../utils/week");
 
 // GET /api/stats/notifications
 router.get("/notifications", auth, async (req, res) => {
   try {
     const weekId = getCurrentWeekId();
+    const students = (await pool.query("SELECT user_id FROM users WHERE role='student'")).rows;
+    const studentIds = students.map(s => s.user_id);
+
     if (req.user.role === "manager") {
-      const students = await User.find({ role: "student" }).select("userId");
-      const studentIds = students.map(s => s.userId);
-      let responded = await Preference.distinct("userId", { weekId, userId: { $in: studentIds } });
-      if (responded.length === 0) {
-        responded = await Preference.distinct("userId", { userId: { $in: studentIds } });
-      }
-      res.json({ count: Math.max(0, studentIds.length - responded.length) });
+      // Count distinct students who responded THIS week only
+      const responded = parseInt((await pool.query(
+        "SELECT COUNT(DISTINCT user_id) AS cnt FROM preferences WHERE week_id=$1 AND user_id=ANY($2)",
+        [weekId, studentIds]
+      )).rows[0].cnt);
+      res.json({ count: Math.max(0, studentIds.length - responded) });
     } else {
-      let prefs = await Preference.find({ userId: req.user.userId, weekId });
-      if (prefs.length === 0) {
-        prefs = await Preference.find({ userId: req.user.userId });
-      }
-      res.json({ count: Math.max(0, 21 - prefs.length) });
+      // Count how many days this student has selected this week (max 7)
+      const cnt = parseInt((await pool.query(
+        "SELECT COUNT(*) AS cnt FROM preferences WHERE user_id=$1 AND week_id=$2",
+        [req.user.userId, weekId]
+      )).rows[0].cnt);
+      res.json({ count: Math.max(0, 7 - cnt) });
     }
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -34,25 +34,47 @@ router.get("/notifications", auth, async (req, res) => {
 router.get("/", auth, async (req, res) => {
   try {
     const weekId = getCurrentWeekId();
-    // Use IST date for today
     const IST_OFFSET = 5.5 * 60 * 60 * 1000;
-    const istNow = new Date(Date.now() + IST_OFFSET);
-    const today = istNow.toISOString().split("T")[0];
+    const todayIST = new Date(Date.now() + IST_OFFSET);
+    const today = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][todayIST.getUTCDay()];
 
-    const students = await User.find({ role: "student" }).select("userId");
-    const studentIds = students.map(s => s.userId);
+    const students = (await pool.query("SELECT user_id FROM users WHERE role='student'")).rows;
+    const studentIds = students.map(s => s.user_id);
     const totalStudents = studentIds.length;
 
-    // Try current weekId first, fallback to any recent preferences
-    let responded = await Preference.distinct("userId", { weekId, userId: { $in: studentIds } });
-    if (responded.length === 0) {
-      // Fallback: count students who have any preferences at all
-      responded = await Preference.distinct("userId", { userId: { $in: studentIds } });
-    }
+    // Current week only — no stale fallback
+    const responded = parseInt((await pool.query(
+      "SELECT COUNT(DISTINCT user_id) AS cnt FROM preferences WHERE week_id=$1 AND user_id=ANY($2)",
+      [weekId, studentIds]
+    )).rows[0].cnt);
 
-    const onLeaveToday = await Leave.countDocuments({ date: today, userId: { $in: studentIds } });
-    const respondedCount = responded.length;
-    res.json({ totalStudents, onLeaveToday, responded: respondedCount, pending: Math.max(0, totalStudents - respondedCount), weekId });
+    // Today's collection stats — current week only
+    const collectedToday = parseInt((await pool.query(
+      "SELECT COUNT(*) AS cnt FROM preferences WHERE week_id=$1 AND day=$2 AND collected=TRUE AND user_id=ANY($3)",
+      [weekId, today, studentIds]
+    )).rows[0].cnt);
+
+    const selectedToday = parseInt((await pool.query(
+      "SELECT COUNT(*) AS cnt FROM preferences WHERE week_id=$1 AND day=$2 AND user_id=ANY($3)",
+      [weekId, today, studentIds]
+    )).rows[0].cnt);
+
+    const onLeaveToday = parseInt((await pool.query(
+      "SELECT COUNT(*) AS cnt FROM leave_dates WHERE date=$1 AND user_id=ANY($2)",
+      [todayIST.toISOString().split("T")[0], studentIds]
+    )).rows[0].cnt);
+
+    res.json({
+      totalStudents,
+      onLeaveToday,
+      responded,
+      pending: Math.max(0, totalStudents - responded),
+      collectedToday,
+      selectedToday,
+      pendingCollection: Math.max(0, selectedToday - collectedToday),
+      weekId,
+      today,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
