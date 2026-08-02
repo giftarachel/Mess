@@ -1491,7 +1491,380 @@ const FeedbackManager = () => {
   );
 };
 
-// ─── APP SHELLS ──────────────────────────────────────────────────────────────
+// ─── SMART PREPARATION RECOMMENDATION DASHBOARD ──────────────────────────────
+const ConfidenceBar = ({ score }) => {
+  const color = score >= 80 ? "#16a34a" : score >= 60 ? "#d97706" : "#e05c8a";
+  return (
+    <div style={{marginTop:6}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+        <span style={{fontSize:10,color:"var(--t3)",fontWeight:600}}>AI Confidence</span>
+        <span style={{fontSize:11,fontWeight:800,color}}>{score}%</span>
+      </div>
+      <div style={{height:5,background:"var(--s4)",borderRadius:3,overflow:"hidden"}}>
+        <motion.div initial={{width:0}} animate={{width:`${score}%`}} transition={{duration:0.8,delay:0.2}}
+          style={{height:"100%",borderRadius:3,background:`linear-gradient(90deg,${color},${color}99)`}}/>
+      </div>
+    </div>
+  );
+};
+
+const MiniTrendChart = ({ data }) => {
+  if (!data || data.length < 2) return <p style={{fontSize:11,color:"var(--t3)"}}>Not enough data for trend</p>;
+  const vals = data.map(d => d.total || 0);
+  const max  = Math.max(...vals, 1);
+  const W = 160, H = 40;
+  const pts = vals.map((v,i) => `${(i/(vals.length-1))*W},${H - (v/max)*H}`).join(" ");
+  return (
+    <svg width={W} height={H} style={{overflow:"visible"}}>
+      <polyline points={pts} fill="none" stroke="var(--pk)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/>
+      {vals.map((v,i) => (
+        <circle key={i} cx={(i/(vals.length-1))*W} cy={H-(v/max)*H} r={3} fill="var(--pk)"/>
+      ))}
+    </svg>
+  );
+};
+
+const SmartPrepDashboard = () => {
+  const [selectedDay, setSelectedDay] = useState(() => {
+    const IST = 5.5*60*60*1000;
+    return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(Date.now()+IST).getUTCDay()];
+  });
+  const [recs,       setRecs]       = useState({});
+  const [history,    setHistory]    = useState(null);
+  const [summary,    setSummary]    = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [overrides,  setOverrides]  = useState({});  // foodItem -> managerQty
+  const [saving,     setSaving]     = useState({});
+  const [saved,      setSaved]      = useState({});
+  const [activeView, setActiveView] = useState("recs"); // "recs" | "history"
+  const [expandedItem, setExpandedItem] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [r, h, s] = await Promise.all([
+        api.getSmartPrepRecommendations(),
+        api.getSmartPrepHistory(),
+        api.getSmartPrepSummary(),
+      ]);
+      setRecs(r.recommendations || {});
+      setHistory(h);
+      setSummary(s);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleConfirm = async (rec) => {
+    const key = `${rec.dayOfWeek}_${rec.foodItem}`;
+    const finalQty = overrides[key] !== undefined ? parseInt(overrides[key]) : rec.suggestedQuantity;
+    setSaving(s => ({...s, [key]: true}));
+    try {
+      await api.confirmPrepPlan({
+        day: rec.dayOfWeek, foodItem: rec.foodItem, diet: rec.diet,
+        managerFinalQty: finalQty, suggestedQty: rec.suggestedQuantity,
+        studentsSelected: rec.studentsSelected, historicalAvg: rec.historicalAvg,
+        confidenceScore: rec.confidenceScore, model: rec.model,
+      });
+      setSaved(s => ({...s, [key]: true}));
+      setTimeout(() => setSaved(s => ({...s, [key]: false})), 3000);
+    } catch(e) { console.error(e); }
+    finally { setSaving(s => ({...s, [key]: false})); }
+  };
+
+  const dayRecs = recs[selectedDay] || [];
+  const modelLabel = { rule_based: "Rule-Based", statistical: "Statistical" };
+  const modelColor = { rule_based: "#d97706", statistical: "#9b3fa8" };
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} style={{padding:"20px 16px 100px"}}>
+      {/* Header */}
+      <div style={{marginBottom:20}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+          <Cpu size={14} color="var(--pk)"/>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--pk)",textTransform:"uppercase",letterSpacing:"1px"}}>Decision Support System</p>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <h2 style={{fontSize:22,fontWeight:900,color:"var(--t1)",letterSpacing:"-0.5px"}}>Smart Preparation</h2>
+          <button onClick={load} style={{background:"var(--s3)",border:"1px solid var(--b2)",borderRadius:50,padding:"6px 14px",fontSize:12,fontWeight:700,color:"var(--pu)",cursor:"pointer",fontFamily:"var(--fn)"}}>↻ Refresh</button>
+        </div>
+        <p style={{fontSize:12,color:"var(--t3)",marginTop:3}}>AI-powered quantity recommendations. You always have the final decision.</p>
+      </div>
+
+      {/* Summary cards */}
+      {summary && (
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+          {[
+            {label:"Total Transactions",value:summary.totalCollections,icon:"📦",color:"#9b3fa8"},
+            {label:"This Week Qty",     value:summary.thisWeekQty,      icon:"☕",color:"#e05c8a"},
+            {label:"Avg Qty/Student",   value:summary.avgQtyPerStudent, icon:"📊",color:"#f4845f"},
+            {label:"Plans Confirmed",   value:summary.confirmedPlans,   icon:"✅",color:"#16a34a"},
+          ].map((s,i) => (
+            <motion.div key={i} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:i*0.06}}
+              style={{background:"var(--s1)",borderRadius:14,padding:"14px",border:`1px solid ${s.color}20`,display:"flex",alignItems:"center",gap:12}}>
+              <span style={{fontSize:22}}>{s.icon}</span>
+              <div>
+                <p style={{fontSize:20,fontWeight:900,color:s.color,letterSpacing:"-0.5px"}}>{s.value}</p>
+                <p style={{fontSize:10,color:"var(--t3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>{s.label}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {/* View toggle */}
+      <div style={{display:"flex",background:"var(--s3)",borderRadius:50,padding:3,marginBottom:18,border:"1px solid var(--b1)"}}>
+        {[{id:"recs",label:"Recommendations",icon:Cpu},{id:"history",label:"Historical Analytics",icon:BarChart3}].map(t => (
+          <button key={t.id} onClick={()=>setActiveView(t.id)}
+            style={{flex:1,padding:"9px",borderRadius:50,border:"none",cursor:"pointer",fontFamily:"var(--fn)",fontWeight:700,fontSize:12,transition:"all 0.2s",display:"flex",alignItems:"center",justifyContent:"center",gap:5,
+              background:activeView===t.id?"linear-gradient(135deg,#9b3fa8,#e05c8a)":"transparent",
+              color:activeView===t.id?"#fff":"var(--t3)",
+              boxShadow:activeView===t.id?"0 4px 14px rgba(155,63,168,0.3)":"none"}}>
+            <t.icon size={12}/>{t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeView === "recs" && (
+        <>
+          {/* Day selector */}
+          <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:8,marginBottom:18}}>
+            {DAYS.map(day => {
+              const hasRecs = (recs[day]||[]).length > 0;
+              return (
+                <button key={day} onClick={()=>setSelectedDay(day)}
+                  style={{flex:"0 0 auto",padding:"9px 16px",borderRadius:50,border:"none",cursor:"pointer",fontFamily:"var(--fn)",fontWeight:700,fontSize:13,transition:"all 0.2s",position:"relative",
+                    background:selectedDay===day?"linear-gradient(135deg,#9b3fa8,#e05c8a)":"var(--s3)",
+                    color:selectedDay===day?"#fff":"var(--t3)",
+                    boxShadow:selectedDay===day?"0 4px 14px rgba(155,63,168,0.3)":"none"}}>
+                  {day}
+                  {hasRecs&&selectedDay!==day&&<div style={{position:"absolute",top:3,right:3,width:5,height:5,borderRadius:"50%",background:"#16a34a"}}/>}
+                </button>
+              );
+            })}
+          </div>
+
+          {loading ? (
+            <div style={{textAlign:"center",padding:40}}><motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:1,ease:"linear"}} style={{width:32,height:32,border:"3px solid var(--b2)",borderTopColor:"var(--pk)",borderRadius:"50%",margin:"0 auto"}}/></div>
+          ) : dayRecs.length === 0 ? (
+            <div style={{textAlign:"center",padding:"40px 20px",background:"var(--s1)",borderRadius:16,border:"1px solid var(--b1)"}}>
+              <p style={{fontSize:14,fontWeight:700,color:"var(--t2)",marginBottom:6}}>No selections for {selectedDay}</p>
+              <p style={{fontSize:12,color:"var(--t3)"}}>Students haven't selected breakfast for this day yet</p>
+            </div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              {dayRecs.map((rec, i) => {
+                const key = `${rec.dayOfWeek}_${rec.foodItem}`;
+                const override = overrides[key];
+                const finalQty = override !== undefined ? parseInt(override)||0 : rec.suggestedQuantity;
+                const isOverridden = override !== undefined && parseInt(override) !== rec.suggestedQuantity;
+                const isExpanded = expandedItem === key;
+                const dietColor = rec.diet === "veg" ? "#16a34a" : "#ea580c";
+                const dietBg    = rec.diet === "veg" ? "rgba(22,163,74,0.06)" : "rgba(234,88,12,0.06)";
+                const isSaved   = saved[key];
+                const isSaving  = saving[key];
+
+                return (
+                  <motion.div key={key} initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:i*0.05}}
+                    style={{borderRadius:18,overflow:"hidden",border:"1px solid var(--b1)",background:"var(--s1)",boxShadow:"0 2px 12px rgba(155,63,168,0.06)"}}>
+
+                    {/* Item header */}
+                    <div style={{padding:"14px 18px",background:`linear-gradient(135deg,${dietBg},rgba(155,63,168,0.03))`,borderBottom:"1px solid var(--b1)",display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{width:44,height:44,borderRadius:13,background:`${dietColor}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+                        {rec.diet === "veg" ? "🥦" : "🍗"}
+                      </div>
+                      <div style={{flex:1}}>
+                        <p style={{fontWeight:800,fontSize:16,color:"var(--t1)",marginBottom:3}}>{rec.foodItem}</p>
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                          <span style={{fontSize:10,background:`${dietColor}15`,color:dietColor,padding:"2px 8px",borderRadius:50,fontWeight:700}}>{rec.diet === "veg" ? "Vegetarian" : "Non-Veg"}</span>
+                          <span style={{fontSize:10,background:`${modelColor[rec.model]}15`,color:modelColor[rec.model],padding:"2px 8px",borderRadius:50,fontWeight:700}}>{modelLabel[rec.model]}</span>
+                        </div>
+                      </div>
+                      <button onClick={()=>setExpandedItem(isExpanded?null:key)}
+                        style={{background:"var(--s3)",border:"1px solid var(--b1)",borderRadius:8,width:30,height:30,cursor:"pointer",color:"var(--t3)",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        {isExpanded?"▲":"▼"}
+                      </button>
+                    </div>
+
+                    {/* Key metrics grid */}
+                    <div style={{padding:"14px 18px",display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                      {[
+                        {label:"Students",   value:rec.studentsSelected, color:"#9b3fa8"},
+                        {label:"Min Required",value:rec.minRequired,     color:"#d97706"},
+                        {label:"Max Possible",value:rec.maxPossible,     color:"#e05c8a"},
+                        {label:"Hist. Avg",  value:`${rec.historicalAvg}x`,color:"#6b7280"},
+                        {label:"Prev Week",  value:rec.prevWeekConsumption,color:"#0891b2"},
+                        {label:"Inventory",  value:rec.currentInventory, color:rec.currentInventory < finalQty?"#dc2626":"#16a34a"},
+                      ].map((m,mi) => (
+                        <div key={mi} style={{background:"var(--s2)",borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
+                          <p style={{fontSize:15,fontWeight:900,color:m.color,letterSpacing:"-0.5px"}}>{m.value}</p>
+                          <p style={{fontSize:9,color:"var(--t3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginTop:1}}>{m.label}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* AI recommendation box */}
+                    <div style={{margin:"0 18px",padding:"12px 14px",borderRadius:12,background:"linear-gradient(135deg,rgba(155,63,168,0.06),rgba(224,92,138,0.04))",border:"1px solid rgba(155,63,168,0.15)",marginBottom:14}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                        <span style={{fontSize:14}}>🤖</span>
+                        <p style={{fontWeight:700,fontSize:12,color:"var(--pu)"}}>AI Recommendation</p>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                        <div>
+                          <p style={{fontSize:24,fontWeight:900,color:"var(--t1)",letterSpacing:"-1px"}}>{rec.suggestedQuantity}
+                            <span style={{fontSize:12,color:"var(--t3)",fontWeight:600}}> units</span>
+                          </p>
+                        </div>
+                        <div style={{textAlign:"right"}}>
+                          <p style={{fontSize:10,color:"var(--t3)",marginBottom:2}}>Data points: {rec.dataPoints}</p>
+                          <p style={{fontSize:10,color:rec.trend > 0?"#16a34a":rec.trend < 0?"#dc2626":"var(--t3)",fontWeight:600}}>
+                            Trend: {rec.trend > 0 ? "▲" : rec.trend < 0 ? "▼" : "→"} {Math.abs(rec.trend)}%
+                          </p>
+                        </div>
+                      </div>
+                      <ConfidenceBar score={rec.confidenceScore}/>
+                      <p style={{fontSize:11,color:"var(--t3)",marginTop:6,lineHeight:1.4,fontStyle:"italic"}}>{rec.reasoning}</p>
+                    </div>
+
+                    {/* Manager override + confirm */}
+                    <div style={{padding:"0 18px 18px"}}>
+                      <p style={{fontSize:11,fontWeight:700,color:"var(--t2)",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.5px"}}>Your Final Quantity (Override if needed)</p>
+                      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                        <div style={{flex:1,position:"relative"}}>
+                          <input type="number" min="0" value={override !== undefined ? override : rec.suggestedQuantity}
+                            onChange={e => setOverrides(o => ({...o, [key]: e.target.value}))}
+                            style={{width:"100%",background:"var(--s3)",border:`2px solid ${isOverridden?"var(--am)":"var(--b2)"}`,borderRadius:10,padding:"10px 14px",color:"var(--t1)",fontFamily:"var(--fn)",fontSize:18,fontWeight:900,outline:"none",boxSizing:"border-box",transition:"border-color 0.2s"}}/>
+                          {isOverridden && <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:10,color:"var(--wn)",fontWeight:700}}>Modified</span>}
+                        </div>
+                        <button onClick={() => handleConfirm(rec)} disabled={isSaving}
+                          style={{background:isSaved?"linear-gradient(135deg,#16a34a,#15803d)":"linear-gradient(135deg,#9b3fa8,#e05c8a)",border:"none",borderRadius:10,padding:"10px 18px",color:"#fff",fontFamily:"var(--fn)",fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap",boxShadow:"0 4px 14px rgba(155,63,168,0.3)",opacity:isSaving?0.7:1}}>
+                          {isSaving ? <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:0.7}} style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%"}}/> : isSaved ? <><CheckCircle2 size={13}/>Saved!</> : <><Zap size={13}/>Confirm Plan</>}
+                        </button>
+                      </div>
+                      {rec.currentInventory > 0 && rec.currentInventory < finalQty && (
+                        <p style={{fontSize:11,color:"#dc2626",marginTop:6,fontWeight:600}}>⚠️ Current inventory ({rec.currentInventory}) is less than planned quantity ({finalQty})</p>
+                      )}
+                    </div>
+
+                    {/* Expandable trend chart */}
+                    <AnimatePresence>
+                      {isExpanded && (
+                        <motion.div initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}}
+                          style={{overflow:"hidden",borderTop:"1px solid var(--b1)",padding:"14px 18px"}}>
+                          <p style={{fontSize:11,fontWeight:700,color:"var(--t2)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.5px"}}>Weekly Consumption Trend (Last 8 Weeks)</p>
+                          {rec.weeklyTrend.length < 2 ? (
+                            <p style={{fontSize:12,color:"var(--t3)"}}>Need more data to show trend chart. Currently {rec.weeklyTrend.length} week(s) of data.</p>
+                          ) : (
+                            <div style={{overflowX:"auto",paddingBottom:8}}>
+                              <MiniTrendChart data={rec.weeklyTrend}/>
+                              <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>
+                                {rec.weeklyTrend.map((w,wi) => (
+                                  <div key={wi} style={{background:"var(--s2)",borderRadius:8,padding:"6px 10px",textAlign:"center",minWidth:60}}>
+                                    <p style={{fontSize:13,fontWeight:800,color:"var(--pk)"}}>{w.total}</p>
+                                    <p style={{fontSize:9,color:"var(--t3)",fontWeight:600}}>{w.weekId}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {activeView === "history" && history && (
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+          {/* Popular items */}
+          <div style={{background:"var(--s1)",borderRadius:16,padding:"16px",border:"1px solid var(--b1)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+              <TrendingUp size={14} color="var(--pk)"/>
+              <p style={{fontWeight:800,fontSize:14,color:"var(--t1)"}}>Most Popular Breakfast Items</p>
+            </div>
+            {history.popular.length === 0 ? <p style={{color:"var(--t3)",fontSize:13}}>No collection data yet</p>
+              : history.popular.map((item, i) => {
+                const maxTotal = Math.max(...history.popular.map(x => parseInt(x.total_qty)), 1);
+                const pct = Math.round((parseInt(item.total_qty)/maxTotal)*100);
+                const dietColor = item.diet === "veg" ? "#16a34a" : "#ea580c";
+                return (
+                  <div key={i} style={{marginBottom:i<history.popular.length-1?12:0}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        {i===0&&<span>🏆</span>}
+                        <span style={{fontSize:13,fontWeight:i<3?700:500,color:"var(--t1)"}}>{item.food_item}</span>
+                        <span style={{fontSize:10,background:`${dietColor}15`,color:dietColor,padding:"1px 6px",borderRadius:50,fontWeight:700}}>{item.diet === "veg"?"Veg":"Non-Veg"}</span>
+                      </div>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{fontSize:11,color:"var(--t3)"}}>{item.transactions} orders</span>
+                        <span style={{fontSize:13,fontWeight:700,color:"var(--pk)"}}>{item.total_qty} total</span>
+                      </div>
+                    </div>
+                    <div className="pt"><motion.div className="pb" initial={{width:0}} animate={{width:`${pct}%`}} transition={{delay:i*0.05,duration:0.5}}/></div>
+                  </div>
+                );
+              })
+            }
+          </div>
+
+          {/* Weekly totals */}
+          <div style={{background:"var(--s1)",borderRadius:16,padding:"16px",border:"1px solid var(--b1)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+              <BarChart3 size={14} color="var(--pu)"/>
+              <p style={{fontWeight:800,fontSize:14,color:"var(--t1)"}}>Weekly Consumption</p>
+            </div>
+            {history.weekly.length === 0 ? <p style={{color:"var(--t3)",fontSize:13}}>No data yet</p>
+              : history.weekly.map((w, i) => {
+                const maxTotal = Math.max(...history.weekly.map(x => parseInt(x.total)||0), 1);
+                const pct = Math.round((parseInt(w.total||0)/maxTotal)*100);
+                return (
+                  <div key={i} style={{marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                      <span style={{fontSize:12,fontWeight:600,color:"var(--t2)"}}>{w.week_id}</span>
+                      <div style={{display:"flex",gap:10}}>
+                        <span style={{fontSize:11,color:"var(--t3)"}}>{w.students} students</span>
+                        <span style={{fontSize:12,fontWeight:700,color:"var(--pu)"}}>{w.total} units</span>
+                      </div>
+                    </div>
+                    <div className="pt"><motion.div className="pb" initial={{width:0}} animate={{width:`${pct}%`}} transition={{delay:i*0.04,duration:0.5}} style={{background:"linear-gradient(90deg,#9b3fa8,#e05c8a)"}}/></div>
+                  </div>
+                );
+              })
+            }
+          </div>
+
+          {/* Wastage estimate */}
+          {history.wastage && history.wastage.length > 0 && (
+            <div style={{background:"rgba(220,38,38,0.04)",borderRadius:16,padding:"16px",border:"1px solid rgba(220,38,38,0.15)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+                <AlertCircle size={14} color="#dc2626"/>
+                <p style={{fontWeight:800,fontSize:14,color:"var(--t1)"}}>Wastage Estimate</p>
+              </div>
+              {history.wastage.map((w, i) => (
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,padding:"8px 12px",background:"rgba(255,255,255,0.7)",borderRadius:10}}>
+                  <span style={{fontSize:13,color:"var(--t1)",fontWeight:500}}>{w.food_item}</span>
+                  <div style={{display:"flex",gap:12}}>
+                    <span style={{fontSize:11,color:"var(--t3)"}}>Prepared: {w.prepared}</span>
+                    <span style={{fontSize:11,color:"var(--t3)"}}>Consumed: {w.consumed}</span>
+                    <span style={{fontSize:12,fontWeight:700,color:"#dc2626"}}>Wasted: {w.wasted}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
+};
+
+// ─── APP SHELLS ───────────────────────────────────────────────────────────────
 const StudentApp = () => {
   const { activeTab, weekDiet, selectionOpen, currentWeekId, notifPanelOpen } = useContext(AppContext);
   const tabs = [
@@ -1537,6 +1910,7 @@ const ManagerApp = () => {
   const tabs = [
     {id:"dashboard", label:"Overview",  icon:LayoutDashboard},
     {id:"menu",      label:"Menu",      icon:ChefHat},
+    {id:"smartprep", label:"AI Prep",   icon:TrendingUp},
     {id:"analytics", label:"Analytics", icon:BarChart3},
     {id:"feedback",  label:"Feedback",  icon:MessageSquare},
   ];
@@ -1548,6 +1922,7 @@ const ManagerApp = () => {
         <motion.div key={activeTab} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:0.2}}>
           {activeTab==="dashboard" && <ManagerDashboard/>}
           {activeTab==="menu"      && <MenuBuilder/>}
+          {activeTab==="smartprep" && <SmartPrepDashboard/>}
           {activeTab==="analytics" && <Analytics/>}
           {activeTab==="feedback"  && <FeedbackManager/>}
         </motion.div>

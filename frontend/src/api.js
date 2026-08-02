@@ -137,4 +137,20 @@ export const api = {
 
   // SSE stream — returns EventSource URL (used directly in frontend)
   getSSEUrl: () => `${BASE}/notifications/stream`,
+
+  // Smart Preparation Recommendation
+  getSmartPrepRecommendations: (day) =>
+    fetch(`${BASE}/smartprep/recommendations${day ? `?day=${day}` : ""}`, { headers: headers() }).then(handle),
+
+  confirmPrepPlan: (data) =>
+    fetch(`${BASE}/smartprep/confirm`, {
+      method: "POST", headers: headers(),
+      body: JSON.stringify(data),
+    }).then(handle),
+
+  getSmartPrepHistory: () =>
+    fetch(`${BASE}/smartprep/history`, { headers: headers() }).then(handle),
+
+  getSmartPrepSummary: () =>
+    fetch(`${BASE}/smartprep/summary`, { headers: headers() }).then(handle),
 };

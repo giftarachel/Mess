@@ -5,4 +5,8 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+pool.on("error", (err) => {
+  console.error("Unexpected pool error:", err.message);
+});
+
 module.exports = pool;
